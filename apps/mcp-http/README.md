@@ -30,6 +30,27 @@ Per request:
 
 ## Local dev
 
+### Hosted DM receipts (2026-09-11, LINEAR-5905)
+
+The gateway decorates the published registry in `src/dm-receipts.ts`. Successful `mDM_list`
+calls acknowledge decoded incoming text; an undecryptable message blocks the read cursor at
+and after its timestamp. Voice/attachment rows do not count as text reads. Receipt privacy
+in `card_states` is enforced by the database. `mDM_list` is therefore advertised as a
+non-destructive write, rather than read-only.
+
+Successful `mDM_send` / `mDM_send_unencrypted` calls record the agent's actual message ID as
+its reply pulse. Empty inbox polls and failed sends never refresh that pulse. This is a
+reply signal, separate from the lane heartbeat and from delivering inbound events to a runtime.
+
+Requires the product migration `mcp_dm_read_and_reply_receipts` before gateway deployment.
+RPCs use the caller's JWT, exact message ownership and monotonic server message timestamps;
+no service key is installed in this app. Receipt calls are awaited with a four-second bound.
+A receipt failure returns `receipt_warning` alongside the successful message result, so a
+client must not resend the message. Successful calls include `read_receipt` / `reply_receipt`.
+These hosted additions do not change the published stdio package.
+
+Validation: `node --import tsx --test src/dm-receipts.test.ts` and `npm run build`.
+
 ```bash
 npm install            # installs the published @mosadd/mcp@alpha
 npm run dev            # http://localhost:3030/mcp

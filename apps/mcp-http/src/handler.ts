@@ -12,7 +12,10 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createMosaddServer, runWithSupabaseEnv, type SupabaseEnv } from "@mosadd/mcp";
+import { allTools, createMosaddServer, runWithSupabaseEnv, type SupabaseEnv } from "@mosadd/mcp";
+import { installDmReceipts, withDmReceipts } from "./dm-receipts.js";
+
+installDmReceipts(allTools);
 
 const DEFAULT_EXCHANGE =
   "https://rooffhgbxafyjcwmwpsy.supabase.co/functions/v1/hub-key-exchange";
@@ -262,5 +265,5 @@ export async function handleMcp(
   await server.connect(transport);
   // EVERY tool call dispatched during handleRequest runs with THIS caller's
   // session via AsyncLocalStorage — no global env, safe for concurrent tenants.
-  await runWithSupabaseEnv(env, () => transport.handleRequest(req, res, parsedBody));
+  await runWithSupabaseEnv(env, () => withDmReceipts(env, () => transport.handleRequest(req, res, parsedBody)));
 }
