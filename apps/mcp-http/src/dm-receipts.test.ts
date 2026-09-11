@@ -79,3 +79,20 @@ test('empty inbox and non-hosted calls write nothing', async () => {
     assert.deepEqual(await local.handler({}, context()), { message_id: 'local' });
   } finally { globalThis.fetch = oldFetch; }
 });
+
+test('only privacy-approved committed read events are broadcast to the private chat', async () => {
+  const oldFetch = globalThis.fetch; const calls: Array<{url: string; body: any}> = [];
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), body: JSON.parse(String(opts?.body)) });
+    return String(url).includes('/rpc/') ? Response.json({ ok: true, threads: 1, events: [{ thread_id: 'dm:peer:self', message_ids: ['in'] }] }) : new Response('', { status: 202 });
+  };
+  try {
+    const t = makeTool('mDM_list', async () => ({ messages: [message('in', '2026-09-11T00:00:00Z')] }));
+    installDmReceipts([t]);
+    await withDmReceipts(env('A'), () => t.handler({}, context()));
+    assert.equal(calls.length, 2);
+    assert.match(calls[1].url, /realtime\/v1\/api\/broadcast$/);
+    assert.deepEqual(calls[1].body, { messages: [{topic: 'space:dm:peer:self', event: 'read', private: true,
+      payload: {threadId: 'dm:peer:self', identityId: 'self', messageIds: ['in'], messageId: 'in'}}] });
+  } finally { globalThis.fetch = oldFetch; }
+});

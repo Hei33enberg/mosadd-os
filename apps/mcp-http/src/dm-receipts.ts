@@ -41,6 +41,21 @@ async function rpc(env: SupabaseEnv, name: string, args: object): Promise<unknow
   return res.json();
 }
 
+async function broadcastRead(env: SupabaseEnv, selfId: string, receipt: unknown): Promise<void> {
+  const events = (receipt as { events?: Array<{ thread_id: string; message_ids: string[] }> })?.events ?? [];
+  if (!events.length) return;
+  // Same private topic and payload used by usePanelMessages in the app. These IDs came from
+  // the committed RPC result; a silent read or unchanged pointer emits no event.
+  const res = await fetch(`${env.url.replace(/\/$/, '')}/realtime/v1/api/broadcast`, {
+    method: 'POST',
+    headers: { apikey: env.anonKey, Authorization: `Bearer ${env.userJwt}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: events.map(e => ({ topic: `space:${e.thread_id}`, event: 'read', private: true,
+      payload: { threadId: e.thread_id, identityId: selfId, messageIds: e.message_ids, messageId: e.message_ids.at(-1) } })) }),
+    signal: AbortSignal.timeout(4000),
+  });
+  if (!res.ok) throw new Error(`read_broadcast_http_${res.status}`);
+}
+
 export function installDmReceipts(tools: MosaddTool[]): void {
   for (const tool of tools) {
     if (installed.has(tool) || !["mDM_list", "mDM_send", "mDM_send_unencrypted"].includes(tool.name)) continue;
@@ -62,6 +77,7 @@ export function installDmReceipts(tools: MosaddTool[]): void {
           const ids = readableMessageIds(value.messages as ReadMessage[], selfId);
           if (!ids.length) return { ...value, read_receipt: { ok: true, threads: 0 } };
           receipt = await rpc(env, "mosadd_mcp_dm_read", { p_reader_identity_id: selfId, p_message_ids: ids });
+          await broadcastRead(env, selfId, receipt);
         } else if (typeof value.message_id === "string") {
           receipt = await rpc(env, "mosadd_mcp_dm_reply", { p_message_id: value.message_id });
         } else return result;
@@ -69,7 +85,7 @@ export function installDmReceipts(tools: MosaddTool[]): void {
       } catch {
         ctx.log("warn", "DM delivered/read but receipt was not confirmed", { tool: tool.name });
         // Preserve successful send IDs. Returning isError would tempt clients to resend the DM.
-        return { ...value, receipt_warning: "Message operation succeeded; its receipt was not confirmed. Do not resend the message to retry the receipt." };
+        return { ...value, receipt_warning: "Message operation succeeded; its receipt or live update was not confirmed. Do not resend the message to retry the receipt." };
       }
     };
   }

@@ -37,6 +37,9 @@ calls acknowledge decoded incoming text; an undecryptable message blocks the rea
 and after its timestamp. Voice/attachment rows do not count as text reads. Receipt privacy
 in `card_states` is enforced by the database. `mDM_list` is therefore advertised as a
 non-destructive write, rather than read-only.
+The follow-up `mcp_dm_live_read_broadcasts` migration returns only committed, privacy-approved
+read events. The gateway sends those to the app's existing private `space:dm:…` topic, so
+an already open chat updates its date without waiting for the agent's next message.
 
 Successful `mDM_send` / `mDM_send_unencrypted` calls record the agent's actual message ID as
 its reply pulse. Empty inbox polls and failed sends never refresh that pulse. This is a
